@@ -1,6 +1,39 @@
 # Analytics and Event Tracking
 
-A comprehensive analytics system to track user interactions and improve the user experience. The analytics system supports multiple providers (Google Analytics, PostHog) and includes automatic session and user tracking.
+> **Note**: This is an example implementation that demonstrates how to integrate the [analytics](https://github.com/DavidWells/analytics) project into a TypeScript + React application. The code provided here serves as a reference architecture and was originally tested with Vite. While not a standalone module, it can be adapted and integrated into any TypeScript + React application.
+
+This repository provides a comprehensive example of how to implement an analytics system to track user interactions and improve the user experience. The implementation leverages the [analytics](https://github.com/DavidWells/analytics) library and demonstrates support for multiple providers (Google Analytics, PostHog) with automatic session and user tracking.
+
+## Getting Started
+
+This example assumes you're using:
+- TypeScript 5.0+
+- React 18+
+- Vite 4+ (though it can be adapted for other build tools)
+- Node.js 18+
+
+While the example uses Vite, the patterns and implementation can be adapted for other build tools like Next.js, Create React App, or any other React-based framework.
+
+### Integration Steps
+
+1. First, ensure your project meets the basic requirements above
+2. Install the dependencies as shown in the Dependencies section
+3. Copy the provided code structure into your project
+4. Adapt the configuration and implementation based on your specific needs
+5. Add your analytics provider keys to your environment configuration
+
+For a quick start with Vite:
+```bash
+# Create a new Vite project with React and TypeScript
+npm create vite@latest my-app -- --template react-ts
+cd my-app
+
+# Install the required dependencies
+npm install analytics @analytics/google-analytics posthog-js @supabase/supabase-js uuid
+
+# Create the necessary directories
+mkdir -p src/{types,utils/providers,hooks}
+```
 
 ## Dependencies
 
