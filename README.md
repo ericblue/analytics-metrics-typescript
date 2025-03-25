@@ -2,7 +2,13 @@
 
 > **Note**: This is an example implementation that demonstrates how to integrate the [analytics](https://github.com/DavidWells/analytics) project into a TypeScript + React application. The code provided here serves as a reference architecture and was originally tested with Vite. While not a standalone module, it can be adapted and integrated into any TypeScript + React application.
 
-This repository provides a comprehensive example of how to implement an analytics system to track user interactions and improve the user experience. The implementation leverages the [analytics](https://github.com/DavidWells/analytics) library and demonstrates support for multiple providers (Google Analytics, PostHog) with automatic session and user tracking.
+This repository provides a comprehensive example of how to implement an analytics system to track user interactions and improve the user experience. The implementation leverages the [analytics](https://github.com/DavidWells/analytics) library and demonstrates support for multiple providers:
+- Google Analytics
+- PostHog
+- Microsoft Clarity
+- Custom providers (like the included Console Logger)
+
+The system is designed to be extensible, allowing you to easily add your own analytics providers for custom event tracking needs.
 
 ## Getting Started
 
@@ -29,7 +35,7 @@ npm create vite@latest my-app -- --template react-ts
 cd my-app
 
 # Install the required dependencies
-npm install analytics @analytics/google-analytics posthog-js @supabase/supabase-js uuid
+npm install analytics @analytics/google-analytics posthog-js @supabase/supabase-js uuid @microsoft/clarity-js
 
 # Create the necessary directories
 mkdir -p src/{types,utils/providers,hooks}
@@ -44,7 +50,8 @@ mkdir -p src/{types,utils/providers,hooks}
     "@analytics/google-analytics": "^1.0.7",
     "posthog-js": "^1.96.1",
     "@supabase/supabase-js": "^2.39.0",
-    "uuid": "^9.0.1"
+    "uuid": "^9.0.1",
+    "@microsoft/clarity-js": "^1.3.8"
   }
 }
 ```
@@ -52,11 +59,110 @@ mkdir -p src/{types,utils/providers,hooks}
 To install the dependencies:
 
 ```bash
-npm install analytics @analytics/google-analytics posthog-js @supabase/supabase-js uuid
+npm install analytics @analytics/google-analytics posthog-js @supabase/supabase-js uuid @microsoft/clarity-js
 # or using yarn
-yarn add analytics @analytics/google-analytics posthog-js @supabase/supabase-js uuid
+yarn add analytics @analytics/google-analytics posthog-js @supabase/supabase-js uuid @microsoft/clarity-js
 # or using pnpm
-pnpm add analytics @analytics/google-analytics posthog-js @supabase/supabase-js uuid
+pnpm add analytics @analytics/google-analytics posthog-js @supabase/supabase-js uuid @microsoft/clarity-js
+```
+
+### Configuration Loading
+
+This example uses Supabase to load configuration and secrets, but you can adapt it to use any configuration method that suits your needs. Here's how it works:
+
+```typescript
+// src/utils/config.ts
+import { createClient } from '@supabase/supabase-js';
+
+class ConfigLoader {
+  private config: Record<string, string> = {};
+  private supabase;
+
+  constructor() {
+    // Initialize Supabase client
+    this.supabase = createClient(
+      process.env.SUPABASE_URL!,
+      process.env.SUPABASE_ANON_KEY!
+    );
+  }
+
+  async loadConfig() {
+    // Fetch configuration from Supabase
+    const { data, error } = await this.supabase
+      .from('configuration')
+      .select('key, value');
+
+    if (error) {
+      console.error('Error loading configuration:', error);
+      return;
+    }
+
+    // Store configuration in memory
+    this.config = data.reduce((acc, { key, value }) => ({
+      ...acc,
+      [key]: value
+    }), {});
+  }
+
+  getValue(key: string, defaultValue: string = ''): string {
+    return this.config[key] || defaultValue;
+  }
+}
+
+export const configLoader = new ConfigLoader();
+```
+
+You can easily adapt this to use standard environment variables or dotenv:
+
+```typescript
+// Alternative implementation using dotenv
+import dotenv from 'dotenv';
+
+class ConfigLoader {
+  private config: Record<string, string> = {};
+
+  constructor() {
+    // Load .env file
+    dotenv.config();
+    
+    // Store environment variables
+    this.config = {
+      ANALYTICS_DEBUG: process.env.ANALYTICS_DEBUG || 'false',
+      GA_TRACKING_ID: process.env.GA_TRACKING_ID || '',
+      POSTHOG_API_KEY: process.env.POSTHOG_API_KEY || '',
+      POSTHOG_HOST_URL: process.env.POSTHOG_HOST_URL || '',
+      CLARITY_PROJECT_ID: process.env.CLARITY_PROJECT_ID || '',
+      // ... other configuration keys
+    };
+  }
+
+  getValue(key: string, defaultValue: string = ''): string {
+    return this.config[key] || defaultValue;
+  }
+}
+
+export const configLoader = new ConfigLoader();
+```
+
+Required environment variables:
+```env
+# Analytics Configuration
+ANALYTICS_DEBUG=true|false
+ANALYTICS_LOG_LEVEL=debug|info|warn|error
+
+# Google Analytics
+GA_TRACKING_ID=UA-XXXXX-Y
+
+# PostHog
+POSTHOG_API_KEY=your_key
+POSTHOG_HOST_URL=your_url
+
+# Microsoft Clarity
+CLARITY_PROJECT_ID=your_id
+
+# Supabase (if using Supabase for config)
+SUPABASE_URL=your_project_url
+SUPABASE_ANON_KEY=your_anon_key
 ```
 
 ### Anonymous User Tracking
@@ -283,7 +389,9 @@ export function Feature() {
 
 ### Provider Implementation
 
-Each provider implements a standard interface:
+Each provider implements a standard interface, making it easy to add new analytics services or create custom tracking solutions. The analytics module's plugin system is highly extensible, allowing you to create providers for any analytics service or custom tracking need.
+
+Here's the standard interface that all providers implement:
 
 ```typescript
 // src/utils/providers/base.ts
@@ -298,7 +406,7 @@ export interface AnalyticsProvider {
 }
 ```
 
-Example provider implementation:
+Example of a simple console logging provider:
 
 ```typescript
 // src/utils/providers/console.ts
@@ -320,6 +428,46 @@ export const consolePlugin: AnalyticsProvider = {
   }
 };
 ```
+
+Example of Microsoft Clarity integration:
+
+```typescript
+// src/utils/providers/clarity.ts
+import { clarity } from '@microsoft/clarity-js';
+import { AnalyticsProvider } from './base';
+
+export const clarityPlugin: AnalyticsProvider = {
+  name: 'microsoft-clarity',
+  config: {
+    projectId: configLoader.getValue('CLARITY_PROJECT_ID')
+  },
+  initialize: ({ config }) => {
+    if (!config.projectId) return;
+    clarity.init(config.projectId);
+  },
+  page: ({ payload }) => {
+    // Clarity automatically tracks page views
+  },
+  track: ({ payload }) => {
+    clarity.event(payload.event, payload.properties);
+  },
+  identify: ({ payload }) => {
+    clarity.identify(payload.userId, payload.traits);
+  },
+  loaded: () => {
+    return typeof clarity !== 'undefined';
+  }
+};
+```
+
+You can create custom providers for various use cases:
+- Internal analytics systems
+- Custom event logging
+- Data warehouses
+- Third-party analytics services
+- Development and debugging
+- A/B testing platforms
+- User behavior analysis
 
 ## Available Events
 
@@ -581,6 +729,7 @@ ANALYTICS_LOG_LEVEL=debug|info|warn|error  # Set console logging level
 GA_TRACKING_ID=UA-XXXXX-Y     # Google Analytics tracking ID
 POSTHOG_API_KEY=your_key      # PostHog API key
 POSTHOG_HOST_URL=your_url     # PostHog host URL
+CLARITY_PROJECT_ID=your_id    # Microsoft Clarity project ID
 ```
 
 ## Debugging Analytics
